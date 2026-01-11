@@ -152,25 +152,17 @@ class SlidingWindowAttention(nn.Module):
         pass
 
 
-class SparseAttention(nn.Module):
-    def __init__(self):
-        super(SparseAttention, self).__init__()
-
-    def forward(self, X: Tensor) -> Tensor:
-        pass
-
-
-class GlobalAttention(nn.Module):
-    def __init__(self):
-        super(GlobalAttention, self).__init__()
-
-    def forward(self, X: Tensor) -> Tensor:
-        pass
-
-
 class LinearAttention(nn.Module):
     def __init__(self):
         super(LinearAttention, self).__init__()
+
+    def forward(self, X: Tensor) -> Tensor:
+        pass
+
+
+class SparseAttention(nn.Module):
+    def __init__(self):
+        super(SparseAttention, self).__init__()
 
     def forward(self, X: Tensor) -> Tensor:
         pass
