@@ -103,8 +103,10 @@ class GroupedQueryAttention(nn.Module):
             # X.shape() - (B, 1, d_model)
             Q = self.expand_attn_tensor(self.W_Q(X), True) # (B, k, g, 1, d_k)
             if enc_out is not None: # cross-attention layer in enc-dec architecture - just compute K & V once since input doesn't change during each token's generation
-                # TODO 
-                pass 
+                if self.K_cache is None:
+                    # enc_out - (B, N, d_model)
+                    self.K_cache = self.expand_attn_tensor(self.W_K(enc_out)) # (B, k, 1, N, d_k)
+                    self.V_cache = self.expand_attn_tensor(self.W_V(enc_out)) # (B, k, 1, N, d_k)
             else:
                 new_k_vector = self.expand_attn_tensor(self.W_K(X)) # (B, 1, k * d_k) -> (B, k, 1, 1, d_k)            
                 new_v_vector = self.expand_attn_tensor(self.W_V(X)) # (B, 1, k * d_k) -> (B, k, 1, 1, d_k)
