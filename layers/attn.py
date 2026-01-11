@@ -1,5 +1,6 @@
 import torch
 from torch import nn, Tensor
+import torch.nn.functional as F
 
 class MultiHeadAttention(nn.Module):
     '''
