@@ -94,6 +94,18 @@ class GroupedQueryAttention(nn.Module):
         else: attn_tensor.unsqueeze(2)
 
         return attn_tensor
+    
+    # TODO - fix mask function for this specific attention mechanism
+    def apply_mask(self, raw_attn: Tensor, padding_mask: Tensor, use_causal_mask: bool = False):
+        # padding_mask applied along second dimension (N)
+        # padding_mask originally has shape (B, N) where each value is either 0 (pad token) or 1 (actual token)
+        mask = 1. - padding_mask.unsqueeze(-1).expand(-1, -1, self.seq_len).unsqueeze(1) # (B, 1, N, N)
+        mask[mask == 1.] = torch.inf
+        if use_causal_mask:
+            # upper triangular mask, diagonal should NOT be retained (tokens can attend to themselves)
+            causal_mask = torch.triu(torch.full((self.batch_size, 1, self.seq_len, self.seq_len), torch.inf), diagonal=1)
+            mask += causal_mask # torch.inf + torch.inf = torch.inf
+        return raw_attn + mask
 
     def forward(self, X, enc_out=None, use_kv_cache=False):
         if not use_kv_cache: # training
@@ -119,7 +131,6 @@ class GroupedQueryAttention(nn.Module):
                     self.V_cache = torch.cat((self.V_cache, new_v_vector), dim=3) # (B, k, 1, t, d_k)
             K = self.K_cache # (B, k, 1, t, d_k)
             V = self.V_cache # (B, k, 1, t, d_k)
-            pass
         
         # K and V will be broadcasted along group dimension to work with Q.
         # This is more efficient than scaling up K and V yourself, because broadcasting under the hood is actually performing 
@@ -130,33 +141,119 @@ class GroupedQueryAttention(nn.Module):
         X = X.reshape(self.batch_size, self.num_heads, X.shape[-2], self.d_k) # (B, H, N, d_k) if not using kv cache, (B, H, 1, d_k) otherwise
         X = X.permute(0, 2, 1, 3).reshape(self.batch_size, self.seq_len, self.num_heads * self.d_k) # (B, N, d_model) if not using kv cache, (B, 1, d_model) otherwise
         return self.W_O(X) # (B, N, d_model)          
-
+    
 
 class MultiQueryAttention(GroupedQueryAttention):
     '''
     Each head has a separate Q matrix, but all heads share the same K and V matrices
     MQA can be thought of as a special case of GQA
     '''
-    def __init__(self, batch_size, seq_len, d_model, num_heads):
-        super(MultiQueryAttention, self).__init__(batch_size, seq_len, d_model, num_heads, k=1)
+    def __init__(self, batch_size, seq_len, d_model, num_head):
+        super(MultiQueryAttention, self).__init__(batch_size, seq_len, d_model)
 
-    def forward(self, X: Tensor) -> Tensor:
-        return super().forward(X)
+    def forward(self, X, enc_out=None, use_kv_cache=False):
+        return super().forward(X, enc_out, use_kv_cache)
 
 
-class SlidingWindowAttention(nn.Module):
-    def __init__(self):
-        super(SlidingWindowAttention, self).__init__()
+class DilatedSlidingWindowAttention(nn.Module):
+    def __init__(self, batch_size, seq_len, d_model, num_heads, window_size, dilation_size):
+        super(DilatedSlidingWindowAttention, self).__init__()
+        self.batch_size = batch_size
+        self.seq_len = seq_len
+        self.d_model = d_model
+        self.d_k = d_model / num_heads
+        self.num_heads = num_heads
+        self.w_size = window_size
+        self.d_size = dilation_size
+        self.W_Q = nn.Linear(d_model, d_model)
+        self.W_K = nn.Linear(d_model, d_model)
+        self.W_V = nn.Linear(d_model, d_model)
+        self.W_O = nn.Linear(d_model, d_model)
+        self.K_cache = None
+        self.V_cache = None
+        self.softmax = nn.Softmax(dim=-1)
+        self.unf = nn.Unfold(
+            kernel_size=(self.d_k, self.w_size), 
+            dilation=(1, self.d_size), 
+            stride=(1,1)
+        )
 
-    def forward(self, X: Tensor) -> Tensor:
-        pass
+    def expand_attn_tensor(self, attn_tensor):
+        return attn_tensor.reshape(self.batch_size, attn_tensor.shape[1], self.num_heads, self.d_k).permute(0, 2, 1, 3)
 
+    # TODO - fix masking function for this specific implementation 
+    # make sure it also applies the mask for the asymmetrical padding vectors
+    def apply_mask(self, raw_attn: Tensor, padding_mask: Tensor, use_causal_mask: bool = False):
+        # padding_mask applied along second dimension (N)
+        # padding_mask originally has shape (B, N) where each value is either 0 (pad token) or 1 (actual token)
+        mask = 1. - padding_mask.unsqueeze(-1).expand(-1, -1, self.seq_len).unsqueeze(1) # (B, 1, N, N)
+        mask[mask == 1.] = torch.inf
+        if use_causal_mask:
+            # upper triangular mask, diagonal should NOT be retained (tokens can attend to themselves)
+            causal_mask = torch.triu(torch.full((self.batch_size, 1, self.seq_len, self.seq_len), torch.inf), diagonal=1)
+            mask += causal_mask # torch.inf + torch.inf = torch.inf
+        return raw_attn + mask
+
+    def get_windows(self, attn_tensor):
+        seq_len = attn_tensor.shape[2] # seq_len may be different from self.seq_len due to KV caching
+        attn_tensor = attn_tensor.transpose(-1, -2) # (B, H, d_k, N)
+        attn_tensor = F.pad(attn_tensor, pad=((self.w_size - 1) * self.d_size, 0, 0, 0)) # (B, H, d_k, N + w - 1)
+        attn_tensor = self.unf(attn_tensor).reshape(self.batch_size, self.num_heads, self.d_k * self.w_size, seq_len) # (B, H, d_k * w, N)
+        attn_tensor = attn_tensor.transpose(-1, -2).reshape(self.batch_size, self.num_heads, seq_len, self.d_k, self.w_size) # (B, H, N, d_k, w)
+        return attn_tensor
+
+    def forward(self, X, enc_out=None, use_kv_cache=None):
+        if not use_kv_cache: # training
+            Q = self.expand_attn_tensor(self.W_Q(X)).unsqueeze(-2) # (B, H, N, 1, d_k)
+            K = self.get_windows(self.expand_attn_tensor(self.W_K(X))) # (B, H, N, w, d_k)
+            V = self.get_windows(self.expand_attn_tensor(self.W_V(X))) # (B, H, N, w, d_k)
+        else: # inference - use rolling buffer of KV cache instead of nn.Unfold()
+            # X.shape() - (B, 1, d_model)
+            Q = self.expand_attn_tensor(self.W_Q(X)) # (B, H, 1, d_k)
+            if enc_out is not None: # cross-attention layer in enc-dec architecture - just compute K & V once since input doesn't change during each token's generation
+                if self.K_cache is None:
+                    # enc_out - (B, N, d_model)
+                    self.K_cache = self.expand_attn_tensor(self.W_K(enc_out)) # (B, H, N, d_k)
+                    self.V_cache = self.expand_attn_tensor(self.W_V(enc_out)) # (B, H, N, d_k)
+            else:
+                new_k_vector = self.expand_attn_tensor(self.W_K(X)) # (B, H, 1, d_k)           
+                new_v_vector = self.expand_attn_tensor(self.W_V(X)) # (B, H, 1, d_k)
+                if self.K_cache is None:
+                    self.K_cache = new_k_vector # (B, H, 1, d_k)   
+                    self.V_cache = new_v_vector # (B, H, 1, d_k)
+                else:
+                    self.K_cache = torch.cat((self.K_cache, new_k_vector), dim=3) # (B, H, t, d_k)
+                    self.V_cache = torch.cat((self.V_cache, new_v_vector), dim=3) # (B, H, t, d_k)
+            if self.K_cache.shape[2] > self.d_size * self.w_size: # keep buffer size limited to window size
+                self.K_cache = self.K_cache[:, :, 1:, :]
+                self.V_cache = self.V_cache[:, :, 1:, :]
+            K = self.K_cache # (B, H, t, d_k)
+            V = self.V_cache # (B, H, t, d_k)
+
+        raw_attn = (Q @ K.transpose(-1, -2)) / torch.sqrt(self.d_k) # (B, H, N, 1, w) 
+        masked_softmax_attn = self.softmax(self.apply_mask(raw_attn)) # (B, H, N, 1, w)
+        X = masked_softmax_attn @ V # (B, H, N, 1, d_k)
+        X = X.squeeze(-2) # (B, H, N, d_k)
+        X = X.permute(0, 2, 1, 3).reshape(self.batch_size, self.seq_len, self.num_heads * self.d_k) # (B, N, d_model)
+        return self.W_O(X) # (B, N, d_model)
+
+
+class SlidingWindowAttention(DilatedSlidingWindowAttention):
+    '''
+    Special case of Dilated Sliding Window Attention (dilation size = 1)
+    '''
+    def __init__(self, batch_size, seq_len, d_model, num_heads, window_size):
+        super(SlidingWindowAttention, self).__init__(batch_size, seq_len, d_model, num_heads, window_size, dilation_size=1)
+
+    def forward(self, X, enc_out=None, use_kv_cache=False):
+        return super().forward(X, enc_out, use_kv_cache)
+    
 
 class LinearAttention(nn.Module):
     def __init__(self):
         super(LinearAttention, self).__init__()
 
-    def forward(self, X: Tensor) -> Tensor:
+    def forward(self, X):
         pass
 
 
@@ -164,7 +261,7 @@ class SparseAttention(nn.Module):
     def __init__(self):
         super(SparseAttention, self).__init__()
 
-    def forward(self, X: Tensor) -> Tensor:
+    def forward(self, X):
         pass
 
 
@@ -172,7 +269,7 @@ class MultiLatentAttention(nn.Module):
     def __init__(self):
         super(MultiLatentAttention, self).__init__()
 
-    def forward(self, X: Tensor) -> Tensor:
+    def forward(self, X):
         pass
 
 
@@ -180,7 +277,7 @@ class TensorProductAttention(nn.Module):
     def __init__(self):
         super(TensorProductAttention, self).__init__()
 
-    def forward(self, X: Tensor) -> Tensor:
+    def forward(self, X):
         pass
 
 
