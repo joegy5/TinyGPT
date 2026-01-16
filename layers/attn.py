@@ -272,11 +272,71 @@ class SlidingWindowAttention(DilatedSlidingWindowAttention):
     
 
 class LinearAttention(nn.Module):
-    def __init__(self):
+    def __init__(self, batch_size, seq_len, d_model, num_heads, feature_map, feature_dim=None):
         super(LinearAttention, self).__init__()
+        self.feature_map = feature_map
+        self.feature_dim = feature_dim
+        self.batch_size = batch_size
+        self.seq_len = seq_len
+        self.d_model = d_model
+        self.d_k = d_model / num_heads
+        self.num_heads = num_heads
+        self.W_Q = nn.Linear(d_model, d_model)
+        self.W_K = nn.Linear(d_model, d_model)
+        self.W_V = nn.Linear(d_model, d_model)
+        self.W_O = nn.Linear(d_model, d_model)
+        self.W_phi = nn.Linear(d_model, self.feature_dim) if feature_map == "learned" else None
+        self.K_cache = None
+        self.V_cache = None
+        self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, X):
-        pass
+    def _apply_feature_map(self, tensor):
+        if self.feature_map == "elu":
+            return torch.exp(tensor)
+        elif self.feature_map == "rand_fourier":
+            pass # TODO
+        elif self.feature_map == "learned":
+            return self.W_phi(tensor)
+        else:
+            raise ValueError(f"The feature map function {self.feature_map} is currently not supported.")
+
+    def _apply_mask(self, raw_attn, padding_mask, use_causal_mask=True):
+        # TODO
+        pass 
+
+    def expand_attn_tensor(self, attn_tensor):
+        return attn_tensor.reshape(self.batch_size, self.shape[1], self.num_heads, self.d_k).permute(0, 2, 1, 3)
+
+    def forward(self, X, enc_out=None, use_kv_cache=False):
+        if not use_kv_cache: # training
+            kv_in = enc_out if enc_out is not None else X
+            Q = self.expand_attn_tensor(self.W_Q(X)) # (B, H, N, d_k)
+            K = self.expand_attn_tensor(self.W_K(kv_in)) # (B, H, N, d_k)
+            V = self.expand_attn_tensor(self.W_V(kv_in)) # (B, H, N, d_k)
+        else: # inference
+            # X.shape: (B, 1, d_model), containing just the query vector for the newest token
+            Q = self.expand_attn_tensor(self.W_Q(X)) # (B, H, 1, d_k)
+            if enc_out is not None: # cross-attention layer in enc-dec architecture - just compute K & V once since input doesn't change during each token's generation
+                # enc_out dim: (B, N_enc, d_model)
+                if self.K_cache is None:
+                    self.K_cache = self.expand_attn_tensor(self.W_K(enc_out)) # (B, N_enc, d_model)
+                    self.V_cache = self.expand_attn_tensor(self.W_V(enc_out)) # (B, N_enc, d_model)
+            else:
+                new_k_vector = self.expand_attn_tensor(self.W_K(X)) # (B, H, 1, d_k)
+                new_v_vector = self.expand_attn_tensor(self.W_V(X)) # (B, H, 1, d_k)
+                if self.K_cache is None:
+                    self.K_cache = new_k_vector # (B, H, 1, d_k)
+                    self.V_cache = new_v_vector # (B, H, 1, d_k)
+                else:
+                    self.K_cache = torch.cat((self.K_cache, new_k_vector), dim=2) # (B, H, t, d_k), where t is the current number of tokens (input + generated)
+                    self.V_cache = torch.cat((self.V_cache, new_v_vector), dim=2) # (B, H, t, d_k)
+            K = self.K_cache
+            V = self.V_cache
+
+        Q, K = self.feature_map(Q), self.feature_map(K)
+        attn = Q @ (K.transpose(-1, -2) @ V) / torch.sqrt(self.d_k)
+        attn = attn.permute(0, 2, 1, 3).reshape(self.batch_size, self.seq_len, self.d_model)
+        return self.W_O(attn) # (B, N, d_model)
 
 
 class SparseAttention(nn.Module):
