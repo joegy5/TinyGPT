@@ -268,14 +268,15 @@ class SlidingWindowAttention(DilatedSlidingWindowAttention):
         super(SlidingWindowAttention, self).__init__(batch_size, seq_len, d_model, num_heads, window_size, dilation_size=1)
 
     def forward(self, X, enc_out=None, use_kv_cache=False):
-        return super().forward(X, enc_out, use_kv_cache)
+        return super().forwarrand_fourierd(X, enc_out, use_kv_cache)
     
 
 class LinearAttention(nn.Module):
-    def __init__(self, batch_size, seq_len, d_model, num_heads, feature_map, feature_dim=None):
+    def __init__(self, batch_size, seq_len, d_model, num_heads, feature_map, feature_dim=None, variance=None):
         super(LinearAttention, self).__init__()
         self.feature_map = feature_map
         self.feature_dim = feature_dim
+        self.variance = variance
         self.batch_size = batch_size
         self.seq_len = seq_len
         self.d_model = d_model
@@ -285,7 +286,8 @@ class LinearAttention(nn.Module):
         self.W_K = nn.Linear(d_model, d_model)
         self.W_V = nn.Linear(d_model, d_model)
         self.W_O = nn.Linear(d_model, d_model)
-        self.W_phi = nn.Linear(d_model, self.feature_dim) if feature_map == "learned" else None
+        self.W_phi = nn.Linear(d_model, feature_dim) if feature_map == "learned" else None
+        self.W_ff = nn.Parameter(torch.randn(d_model, feature_dim) * variance) if feature_map == "fast_fourier" else None
         self.K_cache = None
         self.V_cache = None
         self.softmax = nn.Softmax(dim=-1)
@@ -293,8 +295,9 @@ class LinearAttention(nn.Module):
     def _apply_feature_map(self, tensor):
         if self.feature_map == "elu":
             return torch.exp(tensor)
-        elif self.feature_map == "rand_fourier":
-            pass # TODO
+        elif self.feature_map == "fast_fourier":
+            projections = self.W_ff(tensor)
+            return torch.cat((torch.sin(projections), torch.cos(projections)), dim=-1) / torch.sqrt(self.feature_dim)
         elif self.feature_map == "learned":
             return self.W_phi(tensor)
         else:
