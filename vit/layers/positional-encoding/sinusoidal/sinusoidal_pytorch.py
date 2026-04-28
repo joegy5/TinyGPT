@@ -12,7 +12,7 @@ class SinusoidalPE(nn.Module):
         self.pe = self._init_pe()
 
     def _init_pe(self):
-        assert self.d_model % 2 == 0
+        assert self.d_model % 2 == 0, "d_model cannot be odd"
 
         pos = torch.arange(0, self.num_patches).unsqueeze(-1).expand(-1, self.d_model // 2) # (N, D / 2)
         # original formula might just become zero if denominator gets too large -> apply log to turn into subtraction of terms, then apply exp after
