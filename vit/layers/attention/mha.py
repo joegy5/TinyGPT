@@ -26,14 +26,12 @@ class MultiHeadAttention(nn.Module):
         K = self.W_K(X).reshape(self.batch_size, self.num_patches + 1, self.num_heads, self.d_k).permute(0, 2, 1, 3) # (B, H, N+1, d_k)
         V = self.W_V(X).reshape(self.batch_size, self.num_patches + 1, self.num_heads, self.d_k).permute(0, 2, 1, 3) # (B, H, N+1, d_k)
         
-        # no KV cache needed during inference for ViT
+        # no masks KV cache needed during inference for ViT
         attn = nn.functional.softmax((Q @ K.permute(0, 1, 3, 2)) / math.sqrt(self.d_k), dim=-1) # (B, H, N+1, N+1)
         out = attn @ V # (B, H, N+1, d_k)
         out = out.permute(0, 2, 1, 3).reshape(self.batch_size, self.num_patches + 1, self.d_model) # (B, N+1, D)
         
         return self.W_O(out) # (B, N+1, D)
-
-
 
 
 if __name__ == "__main__":
