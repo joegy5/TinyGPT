@@ -43,9 +43,8 @@ def rmsnorm_kernel(
     out_ptrs = out_start + offsets
     tl.store(out_ptrs, out, mask)
 
-def rmsnorm(X: torch.Tensor):
+def rmsnorm(X: torch.Tensor, gamma: torch.Tensor):
     X = X.to(DEVICE)
-    gamma, beta = torch.ones((1, 1, X.shape[2])).to(DEVICE), torch.zeros((1, 1, X.shape[2])).to(DEVICE)
     out = torch.empty_like(X)
     b_sz, n_rows, n_cols = X.shape
 

@@ -9,7 +9,7 @@ class LearnedPE(nn.Module):
         self.batch_size = batch_size
         self.num_patches = num_patches
         self.d_model = d_model
-        self.pe = nn.Parameter(torch.randn((batch_size, num_patches+1, d_model)))
+        self.pe = nn.Parameter(torch.randn((1, num_patches+1, d_model)))
     
     def forward(self, X):
         # X: (B, N, D)

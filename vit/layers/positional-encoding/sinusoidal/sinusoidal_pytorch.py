@@ -3,6 +3,7 @@ from torch import nn
 import argparse
 import math
 
+
 class SinusoidalPE(nn.Module):
     def __init__(self, num_patches, d_model, denom_const=10000):
         super(SinusoidalPE, self).__init__()
@@ -21,7 +22,6 @@ class SinusoidalPE(nn.Module):
         pe[:, ::2] = torch.sin(inter)
         pe[:, 1::2] = torch.cos(inter)
 
-        print(f"pe: {pe}")
         return pe # (N, D)
     
     
