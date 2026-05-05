@@ -17,7 +17,7 @@ class SinusoidalPE(nn.Module):
 
         pos = torch.arange(0, self.num_patches).unsqueeze(-1).expand(-1, self.d_model // 2) # (N, D / 2)
         # original formula might just become zero if denominator gets too large -> apply log to turn into subtraction of terms, then apply exp after
-        inter = torch.exp(torch.log(pos) - math.log(self.denom_const) * (2. / self.d_model) * torch.arange(0, self.d_model, 2))
+        inter = torch.exp(torch.log(pos) - math.log(self.denom_const) * (2. / self.d_model) * torch.arange(0, self.d_model // 2))
         pe = torch.zeros(size=(self.num_patches, self.d_model))
         pe[:, ::2] = torch.sin(inter)
         pe[:, 1::2] = torch.cos(inter)
