@@ -25,10 +25,8 @@ def add_kernel(
     x = tl.load(x_ptr + offsets, mask=mask) # x_ptr + offsets becomes tensor of memory addr -> tl.load() loads tensor of corresponding elements
     y = tl.load(y_ptr + offsets, mask=mask)
 
-    # step 3: add the correspoding elements from each tensor
+    # step 3: add the corresponding elements from each tensor
     out = x + y
-    tl.device_print("pid", pid, x)
-
 
     # step 4: load output tensor back into memory address of original out variable
     tl.store(out_ptr + offsets, out, mask=mask)

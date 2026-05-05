@@ -3,11 +3,12 @@ from torch import nn
 import argparse
 
 class LayerNorm(nn.Module):
-    def __init__(self, d_model, eps=1e-8):
+    def __init__(self, d_model, eps=1e-8, use_triton=False):
         super(LayerNorm, self).__init__()
         self.eps = eps
-        self.gamma = nn.Parameter(torch.randn((1, 1, d_model)))
-        self.beta = nn.Parameter(torch.randn((1, 1, d_model)))
+        self.use_triton = use_triton
+        self.gamma = nn.Parameter(torch.ones((1, 1, d_model)))
+        self.beta = nn.Parameter(torch.ones((1, 1, d_model)))
 
     def forward(self, X): 
         # X: (B, N+1, D)
@@ -36,3 +37,4 @@ if __name__ == "__main__":
         print(f"TEST #{test_no} ------------")
         print(f"INPUT:\n{input}")
         print(f"OUTPUT:\n{out}")
+

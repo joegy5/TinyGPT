@@ -8,7 +8,7 @@ class RMSNorm(nn.Module):
         self.eps = eps
         self.num_patches = num_patches
         self.d_model = d_model
-        self.gamma = nn.Parameter(torch.randn(size=(1, self.num_patches+1, 1)))
+        self.gamma = nn.Parameter(torch.ones(size=(1, self.num_patches+1, 1)))
 
     def forward(self, X):
         # X: (B, N+1, D)

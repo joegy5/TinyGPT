@@ -59,6 +59,7 @@ def naive_softmax(x: torch.Tensor):
 
 def fused_softmax(x: torch.Tensor):
     n_rows, n_cols = x.shape
+    # BLOCK_SIZE must be a power of 2
     BLOCK_SIZE = triton.next_power_of_2(n_cols) # make sure ALL elements in each row are covered in a block
     
     # NOTE: a warp is group of 32 GPU threads executing same instruction simultaneously
