@@ -6,12 +6,6 @@ import triton.language as tl
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-@triton.jit
-def layernorm_backward_kernel(
-
-):
-    pass
-
 
 @triton.jit
 def layernorm_kernel(

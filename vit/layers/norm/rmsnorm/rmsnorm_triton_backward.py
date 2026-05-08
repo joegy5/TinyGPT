@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 
 @triton.jit
-def flash_attn_kernel(
+def rmsnorm_backward_kernel(
 
 ):
     pass

@@ -11,6 +11,16 @@ class RotaryPE(nn.Module):
         self.num_patches = num_patches
         self.d_k = d_k
         self.denom_const = denom_const
+        self.rot_mat = self._init_pe()
+
+    def _init_pe(self):
+        pos = torch.arange(0, self.num_patches).unsqueeze(-1).expand(-1, self.d_k // 2)
+        angles = torch.exp(torch.log(pos) - math.log(self.denom_const) * (2. / self.d_k) * torch.arange(0, self.d_k // 2))
+        rot_sin, rot_cos = torch.sin(angles).unsqueeze(1), torch.cos(angles).unsqueeze(1)
+
+        rot_mat = torch.cat((rot_cos, -rot_sin, rot_sin, rot_cos), dim=1)
+        rot_mat = rot_mat.permute(0, 2, 1).reshape(1, 1, self.num_patches, self.d_k // 2, 2, 2)
+        return rot_mat
 
     def _apply_rotation(self, rot_mat: torch.Tensor, X: torch.Tensor):
         X = X.reshape(self.batch_size, self.num_heads, self.num_patches, self.d_k // 2, 2, 1)
@@ -20,13 +30,7 @@ class RotaryPE(nn.Module):
         # Q, K: (B, H, N, d_k)
         # apply the individual R_m and R_n transformations to the q and k vectors so that 
         # downstream MHA automatically applies relative rotation transformation
-        pos = torch.arange(0, self.num_patches).unsqueeze(-1).expand(-1, self.d_k // 2)
-        angles = torch.exp(torch.log(pos) - math.log(self.denom_const) * (2. / self.d_k) * torch.arange(0, self.d_k // 2))
-        rot_sin, rot_cos = torch.sin(angles).unsqueeze(1), torch.cos(angles).unsqueeze(1)
-
-        rot_mat = torch.cat((rot_cos, -rot_sin, rot_sin, rot_cos), dim=1)
-        rot_mat = rot_mat.permute(0, 2, 1).reshape(1, 1, self.num_patches, self.d_k // 2, 2, 2)
-        return self._apply_rotation(rot_mat, Q), self._apply_rotation(rot_mat, K)
+        return self._apply_rotation(self.rot_mat, Q), self._apply_rotation(self.rot_mat, K)
 
 
 if __name__ == "__main__":

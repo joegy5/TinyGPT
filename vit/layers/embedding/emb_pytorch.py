@@ -13,16 +13,13 @@ class Embedding(nn.Module):
         self.cls_emb = nn.Parameter(torch.randn(1, 1, d_model))
 
     def forward(self, X):
-        # X: (B, H, W, C)
-        assert X.shape[1] % self.patch_size == 0 and X.shape[2] % self.patch_size == 0, "Height and width dimensions must be divisible by patch size"
+        # X: (B, C, H, W)
+        assert X.shape[2] % self.patch_size == 0 and X.shape[3] % self.patch_size == 0, "Height and width dimensions must be divisible by patch size"
         
-        X = X.permute(0, 3, 1, 2) # (B, C, H, W)
         X = self.unf(X).permute(0, 2, 1) # (B, N, P*P*C)
         X = self.proj(X) # (B, N, D)
 
         return torch.cat((self.cls_emb, X), dim=1) # (B, N+1, D)
-    
-    
 
 
 if __name__ == "__main__":
