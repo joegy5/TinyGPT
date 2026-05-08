@@ -17,7 +17,7 @@ def sinpe_kernel(
     pid = tl.program_id(0)
     dims = tl.arange(0, BLOCK_SIZE // 2)
     pos = pid - n_rows * (pid // n_rows)
-    inter = tl.exp(tl.log(pos-0.0) - tl.log(den_const - 0.0) * (2.0 / n_cols) * dims)
+    inter = tl.exp(tl.log(pos-0.0) - tl.log(den_const-0.0) * (2.0 / n_cols) * dims)
     out = tl.interleave(tl.sin(inter), tl.cos(inter))
 
     out_start = out_ptr + pid * out_stride
@@ -35,7 +35,6 @@ def sinpe(X: torch.Tensor, den_cost=10000):
     out = torch.empty_like(X)
     sinpe_kernel[grid](out, out.stride(1), n_rows, n_cols, BLOCK_SIZE, den_cost)
     return out
-
 
 
 if __name__ == "__main__":
