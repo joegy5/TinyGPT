@@ -7,6 +7,8 @@ import argparse
 
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+# NOTE: remember to add warp optimization
+
 @triton.jit
 def flash_attn_kernel(
     q_ptr, k_ptr, v_ptr, l_ptr, out_ptr,
