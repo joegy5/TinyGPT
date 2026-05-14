@@ -129,36 +129,6 @@ def flash_attn(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, BLOCK_SIZE_Q_R
     )
     return out
 
-import math
-import torch.nn.functional as F
-def attn(
-    Q: torch.Tensor,
-    K: torch.Tensor,
-    V: torch.Tensor,
-) -> torch.Tensor:
-    """
-    Multi-head attention without causal masking or output projection (W_O).
- 
-    Args:
-        Q: Query tensor of shape (B, H, N, D)
-        K: Key tensor of shape (B, H, N, D)
-        V: Value tensor of shape (B, H, N, D)
- 
-    Returns:
-        Output tensor of shape (B, H, N, D)
-        out = softmax(Q @ K^T / sqrt(D)) @ V
-    """
-    D = Q.shape[-1]
- 
-    # (B, H, N, D) @ (B, H, D, N) -> (B, H, N, N)
-    attn_scores = Q @ K.transpose(-2, -1) / math.sqrt(D)
- 
-    attn_weights = F.softmax(attn_scores, dim=-1)
- 
-    # (B, H, N, N) @ (B, H, N, D) -> (B, H, N, D)
-    out = attn_weights @ V
- 
-    return out
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="__main__")
@@ -177,10 +147,9 @@ if __name__ == "__main__":
         v_in = torch.randn(size=(args.b_dim, args.h_dim, args.n_dim, args.d_dim), dtype=torch.float32).to(DEVICE)
         
         out = flash_attn(q_in, k_in, v_in, 16, 16)
-        out_ref = attn(q_in, k_in, v_in)
 
-        # print(f"TEST #{test_no} ------------")
-        # print(f"OUT:\n{out}") 
+        print(f"TEST #{test_no} ------------")
+        print(f"OUT:\n{out}") 
 
 
 
