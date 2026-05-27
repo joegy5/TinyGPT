@@ -159,20 +159,6 @@ def rmsnorm_fwd(X: torch.Tensor, gamma: torch.Tensor):
     return out, denom
 
 
-class RMSNormBackward(nn.Module):
-    def __init__(self, gamma):
-        super().__init__()
-        self.gamma = gamma
-
-    def forward(self, dZ, X, denom):
-        B, N, D = X.shape
-        X_hat = X / denom
-        dX_hat = dZ * self.gamma
-        dX = (dX_hat - X_hat * (dX_hat * X_hat).sum(dim=-1, keepdim=True) / D) / denom
-        dgamma = (dZ * X_hat).sum(dim=(0,1), keepdim=True)
-        return dX, dgamma
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="__main__")
     parser.add_argument("--n_tests", type=int, default=1, help="number of tests to generate")
@@ -189,18 +175,14 @@ if __name__ == "__main__":
         gamma = torch.randn(size=(1, 1, args.d_dim), dtype=torch.float32)
         out_fwd, denom = rmsnorm_fwd(X, gamma)
 
-
-        # print(f"FORWARD PASS OUTPUT: {out_fwd}")
-        # print(f"FORWARD PASS DENOMINATOR: {denom}")
+        print(f"FORWARD PASS OUTPUT: {out_fwd}")
+        print(f"FORWARD PASS DENOMINATOR: {denom}")
         
         dZ = torch.randn(size=(args.b_dim, args.n_dim+1, args.d_dim), dtype=torch.float32)
         dX, dgamma = rmsnorm_bwd(dZ, X, gamma, denom)
-        
-        rmsnorm_bwd_ref = RMSNormBackward(gamma.to(DEVICE))
-        dX_ref, dgamma_ref = rmsnorm_bwd_ref(dZ.to(DEVICE), X.to(DEVICE), denom)
-
-        print(f"BACKWARD PASS dX DIFF: {torch.any(torch.abs(dX - dX_ref.to(DEVICE)) > 1e-6)}")
-        print(f"BACKWARD PASS dgamma: {torch.any(torch.abs(dgamma - dgamma_ref.to(DEVICE)) > 1e-6)}")
+       
+        print(f"BACKWARD PASS dX: {dX}")
+        print(f"BACKWARD PASS dgamma: {dgamma}")
 
 
 
