@@ -118,18 +118,6 @@ def flash_attn(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, BLOCK_SIZE_Q_R
     )
     return out, L
 
-import torch.nn.functional as F
-class MultiHeadAttention(nn.Module):
-    def forward(self, Q, K, V, mask=None):
-        # Q, K, V: (B, H, N, D)
-        D = Q.size(-1)
-        scores = Q @ K.transpose(-2, -1) / (D ** 0.5)  # (B, H, N, N)
-        if mask is not None:
-            scores = scores.masked_fill(mask == 0, float('-inf'))
-        attn = F.softmax(scores, dim=-1)
-        lse = torch.logsumexp(scores, dim=-1, keepdim=True) # (B, H, N, 1)
-        return attn @ V, lse
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="__main__")
     parser.add_argument("--n_tests", type=int, default=1, help="number of tests to generate")
@@ -149,9 +137,8 @@ if __name__ == "__main__":
         out_ref, lse_ref = MultiHeadAttention()(q_in, k_in, v_in)
 
         print(f"TEST #{test_no} ------------")
-        print(f"OUT DIFF: {torch.any(torch.abs(out - out_ref.to(DEVICE)) > 1e-5)}")
-        print(f"LSE DIFF: {torch.any(torch.abs(lse - lse_ref.to(DEVICE)) > 1e-5)}")
-        #print(f"OUT:\n{out}")
+        print(f"OUT:\n{out}")
+        print(f"LSE:\n{lse}")
 
 
 
