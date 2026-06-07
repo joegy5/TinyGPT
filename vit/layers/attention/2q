@@ -116,7 +116,7 @@ def flash_attn(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, BLOCK_SIZE_Q_R
         BLOCK_SIZE_Q_ROW * in_stride, BLOCK_SIZE_K_ROW * in_stride,
         math.sqrt(in_stride)
     )
-    return out, L
+    return out
 
 import torch.nn.functional as F
 class MultiHeadAttention(nn.Module):
@@ -127,16 +127,15 @@ class MultiHeadAttention(nn.Module):
         if mask is not None:
             scores = scores.masked_fill(mask == 0, float('-inf'))
         attn = F.softmax(scores, dim=-1)
-        lse = torch.logsumexp(scores, dim=-1, keepdim=True) # (B, H, N, 1)
-        return attn @ V, lse
+        return attn @ V  # (B, H, N, D)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="__main__")
     parser.add_argument("--n_tests", type=int, default=1, help="number of tests to generate")
-    parser.add_argument("--b_dim", type=int, default=1, help="batch dimension of the test input")
-    parser.add_argument("--h_dim", type=int, default=1, help="head dimension of the test input")
-    parser.add_argument("--n_dim", type=int, default=16, help="patch dimension of the test input")
-    parser.add_argument("--d_dim", type=int, default=16, help="embedding dimension of the test input")
+    parser.add_argument("--b_dim", type=int, default=6, help="batch dimension of the test input")
+    parser.add_argument("--h_dim", type=int, default=5, help="head dimension of the test input")
+    parser.add_argument("--n_dim", type=int, default=512, help="patch dimension of the test input")
+    parser.add_argument("--d_dim", type=int, default=256, help="embedding dimension of the test input")
     args = parser.parse_args()
 
     for test_no in range(args.n_tests):
@@ -145,15 +144,12 @@ if __name__ == "__main__":
         k_in = torch.randn(size=(args.b_dim, args.h_dim, args.n_dim, args.d_dim), dtype=torch.float32).to(DEVICE)
         v_in = torch.randn(size=(args.b_dim, args.h_dim, args.n_dim, args.d_dim), dtype=torch.float32).to(DEVICE)
         
-        out, lse = flash_attn(q_in, k_in, v_in, 16, 16)
-        out_ref, lse_ref = MultiHeadAttention()(q_in, k_in, v_in)
+        out = flash_attn(q_in, k_in, v_in, 16, 16)
+        out_ref = MultiHeadAttention()(q_in, k_in, v_in)
 
         print(f"TEST #{test_no} ------------")
         print(f"OUT DIFF: {torch.any(torch.abs(out - out_ref.to(DEVICE)) > 1e-5)}")
-        print(f"LSE DIFF: {torch.any(torch.abs(lse - lse_ref.to(DEVICE)) > 1e-5)}")
-        #print(f"OUT:\n{out}")
-
-
+        #print(f"OUT:\n{out}") 
 
 
 
